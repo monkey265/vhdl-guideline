@@ -1,0 +1,17 @@
+# Compiled PDF documents
+*.pdf
+
+# Temporary files & test artifacts
+*.tmp
+preview_*.png
+test_*.png
+test_*.pdf
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+*~
+.vscode/
+.idea/

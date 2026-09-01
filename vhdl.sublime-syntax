@@ -1,0 +1,54 @@
+%YAML 1.2
+---
+name: VHDL
+file_extensions:
+  - vhd
+  - vhdl
+scope: source.vhdl
+
+contexts:
+  main:
+    # Comments
+    - match: '--.*$'
+      scope: comment.line.double-dash.vhdl
+
+    # Strings
+    - match: '"'
+      scope: punctuation.definition.string.begin.vhdl
+      push: string
+
+    # Bit / Character Literals (e.g. '0', '1', 'Z', 'X', 'U', 'W', 'L', 'H', '-')
+    - match: "'([0-9a-zA-Z_\\-\\+])'"
+      scope: constant.character.literal.vhdl
+
+    # Attributes (e.g. 'EVENT, 'STABLE, 'IMAGE, 'POS, 'VAL, 'RANGE, 'LENGTH, 'BASE, 'LEFT, 'RIGHT, 'LOW, 'HIGH)
+    - match: "'([a-zA-Z_][a-zA-Z0-9_]*)"
+      scope: entity.other.attribute-name.vhdl
+
+    # Numbers
+    - match: '\b(16#[0-9a-fA-F_]+#|2#[0-1_]+#|[0-9]+(_[0-9]+)*(\.[0-9]+(_[0-9]+)*)?([eE][+-]?[0-9]+)?)\b'
+      scope: constant.numeric.vhdl
+
+    # Standard types
+    - match: '(?i)\b(STD_LOGIC|STD_LOGIC_VECTOR|STD_ULOGIC|STD_ULOGIC_VECTOR|BOOLEAN|BIT|BIT_VECTOR|CHARACTER|STRING|INTEGER|NATURAL|POSITIVE|REAL|TIME|SIGNED|UNSIGNED)\b'
+      scope: storage.type.vhdl
+
+    # Common standard functions & procedures
+    - match: '(?i)\b(rising_edge|falling_edge|to_integer|to_unsigned|to_signed|resize|to_bit|to_stdlogic|finish|stop)\b'
+      scope: entity.name.function.vhdl
+
+    # Keywords & Control Flow
+    - match: '(?i)\b(ABS|ACCESS|AFTER|ALIAS|ALL|AND|ARCHITECTURE|ARRAY|ASSERT|ATTRIBUTE|BEGIN|BLOCK|BODY|BUFFER|BUS|CASE|COMPONENT|CONFIGURATION|CONSTANT|DISCONNECT|DOWNTO|ELSE|ELSIF|END|ENTITY|EXIT|FILE|FOR|FUNCTION|GENERATE|GENERIC|GROUP|GUARDED|IF|IMPURE|IN|INERTIAL|INOUT|IS|LABEL|LIBRARY|LINKAGE|LITERAL|LOOP|MAP|MOD|NAND|NEW|NEXT|NOR|NOT|NULL|OF|ON|OPEN|OR|OTHERS|OUT|PACKAGE|PORT|POSTPONED|PROCEDURE|PROCESS|PURE|RANGE|RECORD|REGISTER|REJECT|REM|REPORT|RETURN|ROL|ROR|SELECT|SEVERITY|SIGNAL|SHARED|SLA|SLL|SRA|SRL|SUBTYPE|THEN|TO|TRANSPORT|TYPE|UNAFFECTED|UNITS|UNTIL|USE|VARIABLE|WAIT|WHEN|WHILE|WITH|XNOR|XOR)\b'
+      scope: keyword.control.vhdl
+
+    # Multi-character Operators & Assignment
+    - match: '(:=|<=|=>|\/=|=|<|>|\+|-|\*|\/|&)'
+      scope: keyword.operator.vhdl
+
+  string:
+    - meta_scope: string.quoted.double.vhdl
+    - match: '"'
+      scope: punctuation.definition.string.end.vhdl
+      pop: true
+    - match: '""'
+      scope: constant.character.escape.vhdl

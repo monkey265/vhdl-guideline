@@ -1,0 +1,54 @@
+name: Build and Release Typst PDF
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+    paths:
+      - '**.typ'
+      - '**.tmTheme'
+      - '**.sublime-syntax'
+      - '.github/workflows/compile-pdf.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Typst
+        uses: typst-community/setup-typst@v3
+
+      - name: Compile Typst to PDF
+        run: |
+          typst compile vhdl_guideline.typ vhdl_guideline.pdf
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vhdl_guideline_pdf
+          path: vhdl_guideline.pdf
+
+      - name: Publish PDF to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest Compiled Guideline' }}
+          body: |
+            Automated PDF build of VHDL Coding Guideline.
+            - Generated from commit: `${{ github.sha }}`
+            - Direct download: `vhdl_guideline.pdf`
+          files: |
+            vhdl_guideline.pdf
+          draft: false
+          prerelease: false

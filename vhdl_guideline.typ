@@ -121,6 +121,17 @@
 #let note(body) = callout(title: "Note", color: rgb("#2563eb"), fill: rgb("#eff6ff"), body)
 #let warning(body) = callout(title: "Synthesis Note", color: rgb("#d97706"), fill: rgb("#fffbeb"), body)
 
+// Reference table: zebra header row, thin horizontal dividers
+#let ref-table(columns: none, header: (), ..rows) = table(
+  columns: columns,
+  align: left + horizon,
+  inset: (x: 6pt, y: 5pt),
+  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
+  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
+  table.header(..header),
+  ..rows,
+)
+
 // Title block
 #align(center)[
   #v(1em)
@@ -134,7 +145,7 @@
 
 #pagebreak()
 
-= Basics
+= Basics & Coding Standards
 
 == Rule Terminology & Severity Levels
 - *Must*: Non-negotiable requirement.
@@ -143,14 +154,155 @@
 
 == Naming & Style Rules
 - *Entity names* should be in `lowercase`.
-- *Keywords* *must* be in *ALL CAPS*.
-- *Functions and procedures* are permitted to be in `lowercase`.
+- *Keywords* *must* be in *ALL CAPS* (`ENTITY`, `PORT`, `SIGNAL`, `PROCESS`, `BEGIN`, `END`, etc.).
+- *Standard datatypes, functions, procedures, and typecasts* (`STD_LOGIC`, `STD_LOGIC_VECTOR`, `INTEGER`, `UNSIGNED`, `SIGNED`, `BOOLEAN`, etc.) *must* be in *ALL CAPS*; custom datatypes, procedures, and functions can be `lowercase`.
 - *Signals and variables* *must* be `lowercase`.
-- *Signals* should have prefix `s_`.
-- *Variables* should have prefix `v_`.
-- *STD* and provided standard library functions, procedures, typecasts, etc. should be *ALL CAPS*; custom datatypes, procedures, and functions can be `lowercase`.
 - *Created libraries* *must not* be named `work`.
 - *IF / FOR / WHILE* statements should be named with descriptive labels.
+- See the table below for signal/variable/generic/etc. prefix and suffix conventions.
+
+== Naming Conventions Quick Reference
+
+#ref-table(
+  columns: (1.2fr, 1.3fr, 2fr, 2.5fr),
+  header: ([*Prefix / Suffix*], [*Applies To*], [*Example*], [*Description*]),
+  [`g_`], [Generics], [`g_data_width`, `g_depth`], [Module configuration parameters.],
+  [`c_`], [Constants], [`c_baud_limit`, `c_depth`], [Static design constants.],
+  [`s_`], [Internal Signals], [`s_rx_data`, `s_valid`], [Internal register/combinatorial nets.],
+  [`v_`], [Variables], [`v_sum`, `v_idx`], [Process-local variables.],
+  [`t_`], [Custom Types], [`t_state`, `t_axi_m2s`], [Enumerations, records, arrays.],
+  [`st_`], [Subtypes], [`st_byte`, `st_addr`], [Range-constrained subtypes.],
+  [`u_`], [Instances], [`u_fifo_ctrl`, `u_uart_tx`], [Direct entity instances.],
+  [`_in`], [Input Ports], [`clk_in`, `data_in`], [Signals entering entity.],
+  [`_out`], [Output Ports], [`ready_out`, `tx_out`], [Signals driven by entity.],
+  [`_io`], [Bidirectional Ports], [`sda_io`, `scl_io`], [Tri-state bus pins.],
+  [`_n`], [Active-Low Signals], [`rst_n_in`, `cs_n_out`], [Negated / active-low polarity.],
+  [`_proc`], [Process Labels], [`fsm_proc`, `sample_proc`], [Mandatory process label suffix.],
+  [`_pkg`], [Packages], [`axi_bus_pkg.vhd`], [Shared type/function package.],
+  [`_tb`], [Testbenches], [`uart_tx_tb.vhd`], [Simulation verification wrapper.],
+)
+
+#pagebreak()
+
+= Standard Libraries & Packages
+
+Hardware designs must import modern, standardized IEEE packages and avoid deprecated vendor-proprietary libraries.
+
+== Mandatory Imports
+
+Every synthesizable VHDL design file *must* import the standard IEEE logic and numeric packages:
+
+```vhdl
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+```
+
+== Forbidden Packages & Anti-Patterns
+
+Legacy packages created by Synopsys before IEEE standardization are strictly forbidden in modern designs:
+
+- *`ieee.std_logic_arith`* (*FORBIDDEN*): Non-standard arithmetic package.
+- *`ieee.std_logic_unsigned`* (*FORBIDDEN*): Treats `STD_LOGIC_VECTOR` implicitly as unsigned numbers.
+- *`ieee.std_logic_signed`* (*FORBIDDEN*): Treats `STD_LOGIC_VECTOR` implicitly as signed numbers.
+
+#warning[
+Using `std_logic_unsigned` or `std_logic_signed` pollutes the namespace and causes severe operator ambiguity and compilation errors when mixed with standard `ieee.numeric_std`. Always use `numeric_std` and cast vectors explicitly to `UNSIGNED` or `SIGNED`.
+]
+
+== Mathematical Functions (`ieee.math_real`)
+
+The `ieee.math_real` package is permitted *only* for compile-time elaboration and constant calculations (such as computing address bus widths from memory depth):
+
+```vhdl
+USE IEEE.MATH_REAL.ALL;
+
+-- Constant calculation in architecture or package header:
+CONSTANT c_depth      : INTEGER := 1024;
+CONSTANT c_addr_width : INTEGER := INTEGER(CEIL(LOG2(REAL(c_depth))));
+```
+
+#warning[
+`ieee.math_real` is strictly *non-synthesizable* and *must never* be used inside clocked sequential processes or runtime combinatorial logic.
+]
+
+== Unresolved (`STD_ULOGIC`) vs. Resolved (`STD_LOGIC`)
+
+- `STD_ULOGIC` (unresolved) detects multiple simultaneous drivers at compilation/elaboration time, turning multi-driver wiring bugs into immediate build errors.
+- `STD_LOGIC` (resolved) should be reserved for top-level tri-state I/O buffers, bidirectional pins, or when required by third-party vendor IP cores.
+- Using `STD_ULOGIC` internally is strongly recommended for large, complex architectures.
+
+#pagebreak()
+
+= Types, Constants & The Record Pattern
+
+== Custom Types & Constants Naming
+
+Custom data types *must* use the `t_` prefix, subtypes *must* use `st_`, and constants *must* use `c_`:
+
+```vhdl
+CONSTANT c_max_retries : INTEGER := 3;
+
+TYPE t_state IS (ST_IDLE, ST_FETCH, ST_EXECUTE, ST_ERROR);
+SUBTYPE st_byte IS STD_LOGIC_VECTOR(7 DOWNTO 0);
+TYPE t_data_array IS ARRAY (0 TO 15) OF st_byte;
+```
+
+== Type Conversion & Explicit Casting
+
+Always use standard conversion paths between `STD_LOGIC_VECTOR`, `UNSIGNED`/`SIGNED`, and `INTEGER`:
+
+#ref-table(
+  columns: (2fr, 2fr, 3fr),
+  header: ([*Source Type*], [*Target Type*], [*Conversion Syntax*]),
+  [`STD_LOGIC_VECTOR`], [`UNSIGNED`], [`UNSIGNED(s_slv)`],
+  [`UNSIGNED`], [`STD_LOGIC_VECTOR`], [`STD_LOGIC_VECTOR(s_uns)`],
+  [`UNSIGNED`], [`INTEGER`], [`TO_INTEGER(s_uns)`],
+  [`INTEGER`], [`UNSIGNED`], [`TO_UNSIGNED(s_int, s_uns'LENGTH)`],
+  [`STD_LOGIC_VECTOR`], [`INTEGER`], [`TO_INTEGER(UNSIGNED(s_slv))`],
+  [`INTEGER`], [`STD_LOGIC_VECTOR`], [`STD_LOGIC_VECTOR(TO_UNSIGNED(s_int, s_slv'LENGTH))`],
+)
+
+== The Record Interface Pattern
+
+For complex bus protocols (e.g., AXI, Avalon, Wishbone, SPI) and multi-signal module interfaces, bundle related signals into a `RECORD` type inside a shared package. This reduces 20--40 individual port wires down to 2 clean interface records:
+
+```vhdl
+-- Package Declaration (uart_bus_pkg.vhd)
+PACKAGE uart_bus_pkg IS
+    TYPE t_uart_m2s IS RECORD
+        txd   : STD_LOGIC;
+        rts_n : STD_LOGIC;
+    END RECORD t_uart_m2s;
+
+    TYPE t_uart_s2m IS RECORD
+        rxd   : STD_LOGIC;
+        cts_n : STD_LOGIC;
+    END RECORD t_uart_s2m;
+
+    -- Deterministic reset/default constant
+    CONSTANT c_uart_m2s_init : t_uart_m2s := (txd => '1', rts_n => '1');
+    CONSTANT c_uart_s2m_init : t_uart_s2m := (rxd => '1', cts_n => '1');
+END PACKAGE uart_bus_pkg;
+```
+
+```vhdl
+-- Entity using Record Ports
+ENTITY uart_transceiver IS
+    PORT (
+        clk_in   : IN  STD_LOGIC;
+        rst_n_in : IN  STD_LOGIC;
+        uart_m2s : OUT t_uart_m2s;
+        uart_s2m : IN  t_uart_s2m
+    );
+END ENTITY uart_transceiver;
+```
+
+#tip[
+Providing a constant default record (`c_uart_m2s_init`) guarantees single-line, clean reset initialization and avoids missing field assignments when adding new record members later.
+]
+
+#pagebreak()
 
 = Ports and Generics
 
@@ -158,26 +310,110 @@
 
 ```vhdl
 GENERIC (
-  g_num_tx : INTEGER
+    g_data_width : INTEGER := 32;
+    g_num_tx     : INTEGER := 4
 );
 ```
 
 - *Port declarations* should contain comments that clearly indicate categories such as inputs, outputs, debug signals, etc.
+- Ports should follow standard direction suffixes: `_in`, `_out`, and `_io`.
+
+== Generic Parameter Validation (`ASSERT`)
+
+Always validate generic configuration parameters during design elaboration inside the architecture statement body:
+
+```vhdl
+ARCHITECTURE rtl OF packet_buffer IS
+BEGIN
+    ASSERT (g_data_width = 8 OR g_data_width = 16 OR g_data_width = 32)
+        REPORT "g_data_width must be 8, 16, or 32!"
+        SEVERITY FAILURE;
+
+    ASSERT (g_depth > 0)
+        REPORT "g_depth must be strictly positive!"
+        SEVERITY FAILURE;
+-- ...
+END ARCHITECTURE rtl;
+```
+
+== Handling Unconnected Ports (`OPEN`)
+
+When instantiating a module where specific output ports are unused, explicitly assign them to the `OPEN` keyword to document intended disconnection:
+
+```vhdl
+u_uart : ENTITY work.uart_rx(rtl)
+    PORT MAP (
+        clk_in    => clk_in,
+        rst_n_in  => rst_n_in,
+        data_out  => s_rx_byte,
+        error_out => OPEN -- Intentionally unconnected
+    );
+```
 
 #pagebreak()
 
-= Clock and Reset
+= Structural Design & Instantiations
 
-- *Clock* should be the first specified port in the port list.
+== Direct Entity Instantiation
+
+Modern VHDL designs *must* use direct entity instantiation (`ENTITY work.module_name(arch_name)`) rather than declaring `COMPONENT ... END COMPONENT` blocks in the architecture declarative header.
+
+```vhdl
+-- RECOMMENDED: Direct Entity Instantiation
+u_crc_engine: ENTITY work.crc32(rtl)
+    GENERIC MAP (
+        g_poly => x"04C11DB7"
+    )
+    PORT MAP (
+        clk_in   => clk_in,
+        rst_n_in => rst_n_in,
+        data_in  => s_tx_data,
+        crc_out  => s_tx_crc
+    );
+```
+
+#note[
+Direct entity instantiation prevents mismatch errors between component signatures and entity definitions, eliminates duplicate boilerplate code, and enables compile-time generic verification.
+]
+
+== Mandatory Named Association
+
+Positional port mapping (`PORT MAP (clk_in, rst_n_in, s_data, s_valid);`) is *strictly forbidden* for any entity with more than one port. Always use explicit named association:
+
+```vhdl
+-- FORBIDDEN (Positional):
+-- u_tx: ENTITY work.tx PORT MAP (clk_in, rst_n_in, s_din, s_dout);
+
+-- CORRECT (Named Association):
+u_tx: ENTITY work.tx(rtl)
+    PORT MAP (
+        clk_in   => clk_in,
+        rst_n_in => rst_n_in,
+        data_in  => s_din,
+        data_out => s_dout
+    );
+```
+
+== Reading Output Ports (`OUT` vs `BUFFER`)
+
+- In *VHDL-2008*: Reading `OUT` ports directly within the architecture is standard and fully supported.
+- In *VHDL-93*: Reading `OUT` ports is illegal. Always declare an internal shadow signal (`s_<name>_out`), operate on it, and assign the port concurrently at the bottom of the architecture (`port_out <= s_port_out;`).
+- *Strict Rule*: The `BUFFER` port mode *must not* be used. `BUFFER` restricts port connections up through the hierarchy and introduces severe synthesis limitations.
+
+#pagebreak()
+
+= Clocking, Resets & Synchronous Design
+
+Reliable synchronous design requires clean clock distribution, controlled reset strategies, and disciplined clock domain crossing (CDC).
+
+== Port Order & Reset Naming
+- *Clock* should be the first specified port in the port list (`clk_in`).
 - *Reset* should be the second specified port in the port list.
 - *Reset* should have its active value and synchronicity explicitly documented.
 - *Reset naming* should reflect both synchronicity and active value:
   - `areset_n` / `arst_n` $->$ Asynchronous reset, active low (negated)
   - `rst_n` $->$ Synchronous reset, active low (negated)
 - *Reset* should be active low.
-
-#block(breakable: false)[
-*Example:*
 
 ```vhdl
 PORT (
@@ -187,36 +423,111 @@ PORT (
     areset_n_in : IN STD_LOGIC  -- asynchronous reset, active low
 );
 ```
-]
 
-= Process
+== Clock Gating Anti-Pattern & Clock Enables
+
+- *Never* gate clock signals with combinatorial logic (`clk_gated <= clk_in AND s_en;` is *strictly forbidden*). Gated clocks introduce clock skew, false transitions, and timing violation hazards.
+- Always use dedicated synchronous *Clock Enables* inside the clocked process:
+
+```vhdl
+-- RIGHT: Synchronous Clock Enable
+reg_proc: PROCESS(clk_in)
+BEGIN
+    IF rising_edge(clk_in) THEN
+        IF s_clk_en = '1' THEN
+            s_data_reg <= s_data_next;
+        END IF;
+    END IF;
+END PROCESS reg_proc;
+```
+
+== Single Clock Edge & Ripple Clocks
+
+- Designs *must* trigger exclusively on `rising_edge(clk_in)`. Mixing `falling_edge()` in the same clock domain cuts available setup time in half and complicates static timing analysis.
+- *No Ripple Clocks*: Never use flip-flop outputs or combinatorial counters as clocks for downstream registers. Use PLL / MMCM primitives or synchronous clock enable strobes.
+
+== The 2-Stage Reset Synchronizer
+
+Asynchronous reset inputs from external pins *must* be de-asserted synchronously to prevent metastability and ensure clean recovery/removal timing closure. Synchronizer registers must include the `async_reg` attribute:
+
+```vhdl
+ARCHITECTURE rtl OF reset_synchronizer IS
+    SIGNAL s_rst_sync_stage1 : STD_LOGIC;
+    SIGNAL s_rst_sync_stage2 : STD_LOGIC;
+
+    ATTRIBUTE async_reg : STRING;
+    ATTRIBUTE async_reg OF s_rst_sync_stage1 : SIGNAL IS "TRUE";
+    ATTRIBUTE async_reg OF s_rst_sync_stage2 : SIGNAL IS "TRUE";
+BEGIN
+    reset_sync_proc: PROCESS(clk_in, areset_n_in)
+    BEGIN
+        IF areset_n_in = '0' THEN
+            s_rst_sync_stage1 <= '0';
+            s_rst_sync_stage2 <= '0';
+        ELSIF rising_edge(clk_in) THEN
+            s_rst_sync_stage1 <= '1';
+            s_rst_sync_stage2 <= s_rst_sync_stage1;
+        END IF;
+    END PROCESS reset_sync_proc;
+
+    s_sync_rst_n <= s_rst_sync_stage2;
+END ARCHITECTURE rtl;
+```
+
+== Selective Datapath Reset (SRL Optimization)
+
+- Reset *only* critical control registers, state machines, and valid flags.
+- Do *not* reset wide datapath pipeline shift registers. Omitting resets on datapath pipelines allows FPGA synthesis tools to infer efficient Look-Up Table Shift Registers (SRL16E/SRL32E) and reduces high-fanout reset network congestion.
+
+== Clock Domain Crossing (CDC) Rules
+
+When transferring signals between independent asynchronous clock domains:
+
+1. *Single-Bit Control Levels*: Use a 2-stage (or 3-stage) flip-flop synchronizer with synthesis attributes preventing register optimization (`async_reg = "TRUE"`).
+2. *Single-Cycle Pulses*: A simple 2-stage synchronizer *cannot* reliably transfer single-cycle pulses from a fast clock to a slower clock (the pulse may be missed). Use a *Toggle Synchronizer* (toggle a level on input pulse, 2-stage sync the level, and edge-detect on destination clock).
+3. *Multi-Bit Data Buses*: *Never* pass multi-bit buses through parallel bit synchronizers (bus skew causes sampling of invalid intermediate words). Always use:
+   - An *Asynchronous FIFO* with Gray-coded read/write pointers, or
+   - A *Handshake / Toggle Qualifier* where multi-bit data remains stable while a single-bit synchronized strobe transfers across domains.
+
+#pagebreak()
+
+= Process & Combinatorial Logic
 
 - Processes *must* be named with a label.
 - The process label should follow the format `something_proc`.
 
-#block(breakable: false)[
-*Example:*
+== Clocked Process: Synchronous Reset vs Asynchronous Reset
+
+Clocked processes must strictly isolate clock and reset logic into one of two standard patterns:
+
+=== Pattern A: Synchronous Reset Process
+For synchronous resets, the sensitivity list *must contain ONLY the clock*:
 
 ```vhdl
-main_proc: PROCESS(clk_in)
+sync_reg_proc: PROCESS(clk_in)
 BEGIN
-    -- something
-END PROCESS main_proc;
+    IF rising_edge(clk_in) THEN
+        IF rst_n_in = '0' THEN
+            s_reg <= (OTHERS => '0');
+        ELSE
+            s_reg <= s_next;
+        END IF;
+    END IF;
+END PROCESS sync_reg_proc;
 ```
-]
 
-- Clocked modules should contain processes sensitive *only* to clock and reset.
-- Combinatorial modules should use a process with the sensitivity list `ALL`.
+=== Pattern B: Asynchronous Reset Process
+For asynchronous resets, the sensitivity list *must contain ONLY clock and asynchronous reset*:
 
 ```vhdl
-reg_proc: PROCESS(clk_in, areset_n_in)
+async_reg_proc: PROCESS(clk_in, areset_n_in)
 BEGIN
-    reset_if: IF areset_n_in = '0' THEN
-        -- Asynchronous Reset Logic
+    IF areset_n_in = '0' THEN
+        s_reg <= (OTHERS => '0');
     ELSIF rising_edge(clk_in) THEN
-        -- Synchronous Logic
-    END IF reset_if;
-END PROCESS reg_proc;
+        s_reg <= s_next;
+    END IF;
+END PROCESS async_reg_proc;
 ```
 
 == Combinatorial Process
@@ -246,9 +557,6 @@ Separates combinatorial next-state logic from sequential state registers into tw
 - If an edge trigger is required, generate a single-cycle pulse signal and check the level of that pulse.
 - When specifying state transitions using `IF` conditions where an `ELSE` would only point to the currently active state, omit the `ELSE` branch and leave only a plain `IF`.
 
-#block(breakable: false)[
-*Example:*
-
 ```vhdl
 -- RIGHT (No ELSE needed for synthesizable FSM)
 IF start = '1' THEN
@@ -256,7 +564,6 @@ IF start = '1' THEN
 END IF;
 -- (Assumes default assignment or OTHERS handles IDLE if necessary)
 ```
-]
 
 == FSM Optimizations and Hacks
 
@@ -288,23 +595,19 @@ END PROCESS fsm_proc;
 === The "Safe FSM" Attribute
 In high-reliability designs, radiation-induced single-event upsets (SEUs) or bit-flips can kick an FSM into an undefined state. Synthesis attributes force the compiler to generate state recovery logic.
 
-#table(
+#ref-table(
   columns: (1.5fr, 1.5fr, 3.5fr),
-  align: (left + horizon, left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Attribute*], [*Value*], [*Description*]),
-  [`fsm_safe_state`], [`"default_state"`], [Forces the FSM to return to reset state if it enters an illegal value.],
-  [`fsm_encoding`], [`"one_hot"`, `"gray"`], [Overrides the compiler's automatic choice for state bit encoding.],
+  header: ([*Attribute*], [*Value*], [*Description*]),
+  [`fsm_safe_state`], [`"default_state"`], [AMD/Vivado: Forces FSM to return to reset on illegal state.],
+  [`syn_encoding`], [`"safe"`], [Intel/Quartus & Synopsys: Generates safe recovery logic.],
+  [`fsm_encoding`], [`"one_hot"`, `"gray"`], [Overrides compiler default state bit encoding.],
 )
-
-*Example:*
 
 ```vhdl
 TYPE t_state IS (ST_IDLE, ST_READ, ST_WRITE);
 SIGNAL s_state : t_state;
 
+-- AMD Vivado safe FSM attribute:
 ATTRIBUTE fsm_safe_state : STRING;
 ATTRIBUTE fsm_safe_state OF s_state : SIGNAL IS "default_state";
 ```
@@ -371,13 +674,9 @@ If updated increment values must be evaluated immediately within the exact same 
 
 === Counter Patterns Comparison
 
-#table(
+#ref-table(
   columns: (1.5fr, 1.3fr, 2.2fr, 2.2fr),
-  align: (left + horizon, left + horizon, left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Pattern*], [*Best For*], [*Pros*], [*Cons*]),
+  header: ([*Pattern*], [*Best For*], [*Pros*], [*Cons*]),
   [*Signal Increment*], [General Purpose], [Easy to debug in simulation waveforms.], [1-cycle latency in comparisons.],
   [*Variable Increment*], [Complex Math], [Logic evaluates in "zero time."], [Harder to observe in some simulators.],
   [*External TC*], [High Speed ($F_max$)], [Optimal for timing closure.], [Requires an additional signal.],
@@ -389,9 +688,89 @@ Always declare range-bounded integers and include an explicit reset assignment i
 === Shared Counter Optimization
 Instantiate a single generic counter signal and reset it across state transitions to substantially decrease FPGA logic utilization (LUT count) when multiple states require counting sequences.
 
-#tip[
-Always use `ieee.numeric_std` and cast vectors to `UNSIGNED` when performing arithmetic. Avoid legacy, non-standard libraries like `std_logic_unsigned`.
-]
+#pagebreak()
+
+= Modern VHDL-2008 Quality-of-Life Features
+
+VHDL-2008 provides significant enhancements that eliminate historical verbosity while maintaining strict type safety.
+
+== Unary Reduction Operators
+
+Unary logical reduction operators apply across all bits of a vector, eliminating manual for-loops and reduction functions:
+
+```vhdl
+s_all_ones <= AND s_data_bus;  -- Equivalent to s_data_bus = (s_data_bus'RANGE => '1')
+s_has_one  <= OR  s_data_bus;  -- Equivalent to s_data_bus /= (s_data_bus'RANGE => '0')
+s_parity   <= XOR s_data_bus;  -- Computes odd/even parity bit
+```
+
+== Matching Relational Operators (`?=`, `?/=`, `?<`, `?<=`, `?>`, `?>=`)
+
+Matching operators treat bit elements as standard `STD_ULOGIC` values and support bitwise "don't care" (`'-'`) matching:
+
+```vhdl
+-- Compares against bitmask containing '-' don't-care bits:
+IF (s_instruction ?= "1010----") THEN
+    s_is_branch <= '1';
+END IF;
+```
+
+== Sequential Conditional and Selected Assignments
+
+VHDL-2008 allows conditional (`WHEN/ELSE`) and selected (`WITH/SELECT`) assignments inside sequential `PROCESS` blocks:
+
+```vhdl
+reg_proc: PROCESS(clk_in)
+BEGIN
+    IF rising_edge(clk_in) THEN
+        -- Conditional assignment directly inside sequential process:
+        s_data <= c_init_val WHEN s_reset = '1' ELSE s_next_data;
+    END IF;
+END PROCESS reg_proc;
+```
+
+== Unconstrained Array Elements
+
+Packages and records can declare arrays of unconstrained elements, enabling truly generic data structures:
+
+```vhdl
+TYPE t_slv_array IS ARRAY (NATURAL RANGE <>) OF STD_LOGIC_VECTOR;
+```
+
+== Direct Reading of Output Ports
+
+VHDL-2008 removes the restriction forbidding reads of `OUT` mode ports, eliminating unnecessary internal shadow signals:
+
+```vhdl
+ENTITY counter IS
+    PORT (
+        clk_in    : IN  STD_LOGIC;
+        count_out : OUT UNSIGNED(7 DOWNTO 0)
+    );
+END ENTITY counter;
+
+ARCHITECTURE rtl OF counter IS
+BEGIN
+    count_proc: PROCESS(clk_in)
+    BEGIN
+        IF rising_edge(clk_in) THEN
+            -- In VHDL-2008, reading count_out directly is fully legal:
+            count_out <= count_out + 1;
+        END IF;
+    END PROCESS count_proc;
+END ARCHITECTURE rtl;
+```
+
+== Block Comments
+
+VHDL-2008 supports C-style block comments in addition to standard `--` line comments:
+
+```vhdl
+/*
+   Multi-line block comment
+   Supported in VHDL-2008 compliant synthesis and simulation tools.
+*/
+```
 
 #pagebreak()
 
@@ -409,45 +788,33 @@ object_name[ signature ]'attribute_name[ ( expression ) ]
 
 === Global Type Attributes
 
-#table(
+#ref-table(
   columns: (2fr, 4fr),
-  align: (left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Attribute*], [*Result*]),
-  [`T'Base`], [Returns the base type of type `T`.],
+  header: ([*Attribute*], [*Result*]),
+  [`T'BASE`], [Returns the base type of type `T`.],
 )
 
 === Scalar Type Attributes
 
-#table(
+#ref-table(
   columns: (1.5fr, 1.5fr, 3.5fr),
-  align: (left + horizon, left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Attribute*], [*Return Type*], [*Description*]),
-  [`T'Left`], [Same as `T`], [The leftmost value of `T`.],
-  [`T'Right`], [Same as `T`], [The rightmost value of `T`.],
-  [`T'Low`], [Same as `T`], [The least value in `T`.],
-  [`T'High`], [Same as `T`], [The greatest value in `T`.],
-  [`T'Ascending`], [`Boolean`], [`True` if `T` is an ascending range.],
-  [`T'Image(x)`], [`String`], [Textual string representation of value `x`.],
-  [`T'Value(s)`], [Base of `T`], [Value in `T` represented by string `s`.],
+  header: ([*Attribute*], [*Return Type*], [*Description*]),
+  [`T'LEFT`], [Same as `T`], [The leftmost value of `T`.],
+  [`T'RIGHT`], [Same as `T`], [The rightmost value of `T`.],
+  [`T'LOW`], [Same as `T`], [The least value in `T`.],
+  [`T'HIGH`], [Same as `T`], [The greatest value in `T`.],
+  [`T'ASCENDING`], [`BOOLEAN`], [`TRUE` if `T` is an ascending range.],
+  [`T'IMAGE(x)`], [`STRING`], [Textual string representation of value `x`.],
+  [`T'VALUE(s)`], [Base of `T`], [Value in `T` represented by string `s`.],
 )
 
 === Discrete & Physical Type Attributes
 
-#table(
+#ref-table(
   columns: (1.5fr, 1.5fr, 3.5fr),
-  align: (left + horizon, left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Attribute*], [*Return Type*], [*Description*]),
-  [`T'Pos(s)`], [`Integer`], [Position number of `s` in type `T`.],
-  [`T'Val(x)`], [Base of `T`], [Value at integer position `x` in type `T`.],
+  header: ([*Attribute*], [*Return Type*], [*Description*]),
+  [`T'POS(s)`], [`INTEGER`], [Position number of `s` in type `T`.],
+  [`T'VAL(x)`], [Base of `T`], [Value at integer position `x` in type `T`.],
 )
 
 #note[
@@ -456,84 +823,105 @@ Synthesis tools generally discourage the use of value navigation attributes for 
 
 === Array Attributes
 
-#table(
+#ref-table(
   columns: (2fr, 4fr),
-  align: (left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Attribute*], [*Result*]),
-  [`A'Left(n)`], [Leftmost value in the index range of dimension `n`.],
-  [`A'Right(n)`], [Rightmost value in the index range of dimension `n`.],
-  [`A'Range(n)`], [The specific index range (e.g., `7 downto 0`).],
-  [`A'Length(n)`], [Total number of values in the `n`-th dimension index range.],
+  header: ([*Attribute*], [*Result*]),
+  [`A'LEFT(n)`], [Leftmost value in the index range of dimension `n`.],
+  [`A'RIGHT(n)`], [Rightmost value in the index range of dimension `n`.],
+  [`A'LOW(n)`], [Lowest bound in the index range of dimension `n`.],
+  [`A'HIGH(n)`], [Highest bound in the index range of dimension `n`.],
+  [`A'RANGE(n)`], [The specific index range (e.g., `7 DOWNTO 0`).],
+  [`A'REVERSE_RANGE(n)`], [Reversed index range (e.g., `0 TO 7`).],
+  [`A'LENGTH(n)`], [Total number of values in the `n`-th dimension index range.],
 )
 
 === Signal Attributes
 
-#table(
+#ref-table(
   columns: (2fr, 4fr),
-  align: (left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Attribute*], [*Result*]),
-  [`S'Delayed(t)`], [Signal `S` delayed by simulation time units `t`.],
-  [`S'Stable(t)`], [`True` if no event has occurred on `S` for time duration `t`.],
-  [`S'Event`], [`True` if an event occurred on `S` in the current cycle.],
-  [`S'Last_value`], [The previous value of `S` prior to the most recent event.],
-  [`S'Driving`], [`True` if the current process is actively driving signal `S`.],
+  header: ([*Attribute*], [*Result*]),
+  [`S'DELAYED(t)`], [Signal `S` delayed by simulation time units `t`.],
+  [`S'STABLE(t)`], [`TRUE` if no event has occurred on `S` for time duration `t`.],
+  [`S'EVENT`], [`TRUE` if an event occurred on `S` in the current cycle.],
+  [`S'ACTIVE`], [`TRUE` if any transaction occurred on `S` in current cycle.],
+  [`S'LAST_EVENT`], [Time elapsed since the most recent event on `S`.],
+  [`S'LAST_VALUE`], [The previous value of `S` prior to the most recent event.],
+  [`S'DRIVING`], [`TRUE` if the current process is actively driving signal `S`.],
 )
 
 === Named Entity Attributes
 
-#table(
+#ref-table(
   columns: (2fr, 4fr),
-  align: (left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Attribute*], [*Result*]),
-  [`E'Path_name`], [String describing the full hierarchical design path to `E`.],
-  [`E'Instance_name`], [Full hierarchical path including entity and architecture names.],
+  header: ([*Attribute*], [*Result*]),
+  [`E'PATH_NAME`], [String describing the full hierarchical design path to `E`.],
+  [`E'INSTANCE_NAME`], [Full hierarchical path including entity and architecture names.],
 )
+
+=== Synthesis Attributes & Placement Control
+
+Synthesis attributes provide compiler directives to guide physical hardware mapping, register packing, and netlist optimizations.
+
+*The I/O Timing Savior: `IOB`*
+
+- *What it does*: Forces an input or output flip-flop into dedicated ILOGIC/OLOGIC storage elements located directly inside the physical device pad ring (I/O block), rather than in general FPGA logic slices (fabric).
+- *Why it matters*: High-speed external interfaces (such as ADCs, DACs, SPI flashes, and Gigabit Ethernet PHYs) require strict, deterministic setup ($t_"su"$), hold ($t_"h"$), and clock-to-output ($t_"co"$) times. If interface registers are placed in the FPGA fabric, place-and-route (P&R) variations will change routing delays on every compile, randomly breaking timing closure. Setting `IOB = "TRUE"` packs the flip-flop directly into the pin buffer, eliminating internal interconnect delay and guaranteeing absolute deterministic interface timing across builds.
+
+*Example:*
+
+```vhdl
+ARCHITECTURE rtl OF spi_master IS
+    SIGNAL s_spi_miso_reg : STD_LOGIC;
+
+    -- 1. Declare the synthesis attribute
+    ATTRIBUTE iob : STRING;
+
+    -- 2. Apply it to the internal register signal or port
+    ATTRIBUTE iob OF s_spi_miso_reg : SIGNAL IS "TRUE";
+BEGIN
+    sample_proc: PROCESS(clk_in)
+    BEGIN
+        IF rising_edge(clk_in) THEN
+            s_spi_miso_reg <= spi_miso_in;
+        END IF;
+    END PROCESS sample_proc;
+END ARCHITECTURE rtl;
+```
+
+#ref-table(
+  columns: (1.5fr, 1.5fr, 3.5fr),
+  header: ([*Attribute*], [*Value*], [*Description*]),
+  [`iob`], [`"TRUE"`, `"FALSE"`], [AMD/Vivado: Packs flip-flops into dedicated I/O pad ring blocks (Quartus equivalent: `useioff`).],
+  [`async_reg`], [`"TRUE"`], [Prevents logic absorption and places synchronizers close together.],
+  [`dont_touch` / `keep`], [`"TRUE"`], [Prevents optimization/merging of redundant registers or nets.],
+)
+
+See the "Safe FSM" Attribute table (§ FSM Optimizations and Hacks) for `fsm_safe_state` and `syn_encoding`.
 
 == Simulation & Delta Control
 
 === Process Control
 
-#table(
+#ref-table(
   columns: (2fr, 4fr),
-  align: (left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Keyword*], [*Description*]),
+  header: ([*Keyword*], [*Description*]),
   [`POSTPONED`], [Ensures the block executes only during the *last* delta cycle of a simulation time step.],
 )
 
 === Delay Modeling
 
-#table(
+#ref-table(
   columns: (1.5fr, 1.5fr, 3.5fr),
-  align: (left + horizon, left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Keyword*], [*Delay Type*], [*Description*]),
+  header: ([*Keyword*], [*Delay Type*], [*Description*]),
   [`TRANSPORT`], [Transport], [Models ideal wire delay; all signal pulses pass through regardless of width.],
   [`REJECT`], [Inertial], [Specifies pulse rejection width threshold for inertial delay.],
 )
 
 === Simulation Hacks & Testbenching
 
-#table(
+#ref-table(
   columns: (2fr, 4fr),
-  align: (left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Technique*], [*Description*]),
+  header: ([*Technique*], [*Description*]),
   [`WAIT FOR 0 NS;`], [Forces simulator to advance to the next *delta cycle*.],
   [`FORCE`], [Overrides a signal's value directly during simulation (VHDL-2008).],
   [`RELEASE`], [Removes a previously applied `FORCE` override.],
@@ -545,13 +933,9 @@ All keywords and constructs in this simulation section are strictly *non-synthes
 
 === Driving Attributes
 
-#table(
+#ref-table(
   columns: (2fr, 4fr),
-  align: (left + horizon, left + horizon),
-  inset: (x: 6pt, y: 5pt),
-  fill: (col, row) => if row == 0 { rgb("#e2e8f0") } else { none },
-  stroke: (x, y) => if y == 0 { (bottom: 1pt + rgb("#94a3b8")) } else { (bottom: 0.5pt + rgb("#e2e8f0")) },
-  table.header([*Attribute*], [*Description*]),
+  header: ([*Attribute*], [*Description*]),
   [`S'DRIVING`], [Returns `TRUE` if the current process is actively contributing a value to `S`.],
   [`S'DRIVING_VALUE`], [Returns the value this specific process is attempting to drive onto `S`.],
 )
@@ -565,9 +949,9 @@ Access internal signals without routing intermediate ports:
 === Simulation Termination
 Use `FINISH` or `STOP` from `STD.ENV` to terminate simulations cleanly without assertion failures:
 ```vhdl
-USE std.env.all;
+USE STD.ENV.ALL;
 -- ...
-finish;
+FINISH;
 ```
 
 === Transaction Tracking (`'TRANSACTION`)

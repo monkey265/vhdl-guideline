@@ -3,7 +3,7 @@
 A comprehensive standard, reference guide, and AI Agent Skill for robust, synthesizable VHDL design on FPGAs and ASICs.
 
 [![Build and Release](https://github.com/monkey265/vhdl-guideline/actions/workflows/compile-pdf.yml/badge.svg)](https://github.com/monkey265/vhdl-guideline/actions/workflows/compile-pdf.yml)
-[![Latest Release](https://img.shields.io/github/v/release/monkey265/vhdl-guideline?label=Release)](https://github.com/monkey265/vhdl-guideline/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/monkey265/vhdl-guideline?display_name=tag&label=Release)](https://github.com/monkey265/vhdl-guideline/releases/latest)
 
 ---
 

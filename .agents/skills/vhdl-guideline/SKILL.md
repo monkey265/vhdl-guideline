@@ -17,7 +17,7 @@ description: >-
 - **Entity names** should be in `lowercase`.
 - **Keywords** **must** be in **ALL CAPS** (`ENTITY`, `PORT`, `SIGNAL`, `PROCESS`, `BEGIN`, `END`, etc.).
 - **Standard datatypes** **must** be in **ALL CAPS** (`STD_LOGIC`, `STD_LOGIC_VECTOR`, `INTEGER`, `UNSIGNED`, `SIGNED`, `BOOLEAN`).
-- **Functions and procedures** are permitted to be in `lowercase`.
+- Write custom **functions and procedures** in `lowercase`.
 - **Signals and variables** **must** be `lowercase`.
 - **Signals** should have prefix `s_`.
 - **Variables** should have prefix `v_`.
@@ -26,7 +26,7 @@ description: >-
 - **Custom Types & Enums** should have prefix `t_`.
 - **Subtypes** should have prefix `st_`.
 - **Component Instances** should have prefix `u_` or `inst_`.
-- **STD** and provided standard library functions, procedures, typecasts, etc. should be **ALL CAPS**; custom datatypes, procedures, and functions can be `lowercase`.
+- **STD** and provided standard library functions, procedures, typecasts, etc. should be **ALL CAPS**. Custom datatypes, procedures, and functions can be `lowercase`.
 - **Created libraries** **must not** be named `work`.
 - **IF / FOR / WHILE** statements should be named with descriptive labels.
 
@@ -77,7 +77,7 @@ Legacy packages created by Synopsys before IEEE standardization are strictly for
 
 ## Mathematical Functions (`ieee.math_real`)
 
-The `ieee.math_real` package is permitted **only** for compile-time elaboration and constant calculations (such as computing address bus widths from memory depth):
+Use the `ieee.math_real` package **only** for compile-time elaboration and constant calculations (such as computing address bus widths from memory depth):
 
 ```vhdl
 USE IEEE.MATH_REAL.ALL;
@@ -197,7 +197,7 @@ END ARCHITECTURE rtl;
 
 ## Handling Unconnected Ports (`OPEN`)
 
-When instantiating a module where specific output ports are unused, explicitly assign them to the `OPEN` keyword to document intended disconnection:
+When you instantiate a module with unused output ports, explicitly assign them to the `OPEN` keyword to document intended disconnection:
 
 ```vhdl
 u_uart : ENTITY work.uart_rx(rtl)
@@ -343,7 +343,7 @@ When transferring signals between independent asynchronous clock domains:
 1. **Single-Bit Control Levels**: Use a 2-stage (or 3-stage) flip-flop synchronizer with synthesis attributes preventing register optimization (`async_reg = "TRUE"`).
 2. **Single-Cycle Pulses**: A simple 2-stage synchronizer **cannot** reliably transfer single-cycle pulses from a fast clock to a slower clock (the pulse may be missed). Use a **Toggle Synchronizer** (toggle a level on input pulse, 2-stage sync the level, and edge-detect on destination clock).
 3. **Multi-Bit Data Buses**: **Never** pass multi-bit buses through parallel bit synchronizers (bus skew causes sampling of invalid intermediate words). Always use:
-   - An **Asynchronous FIFO** with Gray-coded read/write pointers, or
+   - An **Asynchronous FIFO** with Gray-coded read/write pointers.
    - A **Handshake / Toggle Qualifier** where multi-bit data remains stable while a single-bit synchronized strobe transfers across domains.
 
 ---
@@ -392,7 +392,7 @@ END PROCESS async_reg_proc;
 - If using VHDL-93, the sensitivity list **must** explicitly contain every signal read inside the process body.
 
 ## Latch Prevention
-- To ensure logic is purely combinational and does not synthesize unintentional latches, every signal assigned in the process **must** be assigned a value in all possible branches (i.e., every `IF` needs an `ELSE`, and every `CASE` needs a `WHEN OTHERS`).
+- In a combinatorial process, assign every signal a value in all conditional branches. Every `IF` statement needs an `ELSE` branch, and every `CASE` statement needs a `WHEN OTHERS` branch. This prevents unintended latch inference.
 
 ---
 
@@ -409,10 +409,10 @@ Separates combinatorial next-state logic from sequential state registers into tw
 - Recommended for FPGA targets.
 - Results in registered outputs, which is beneficial for timing closure.
 
-## State Changes
-- **Never** use `rising_edge()` on input (data) signals to control state changes.
-- If an edge trigger is required, generate a single-cycle pulse signal and check the level of that pulse.
-- When specifying state transitions using `IF` conditions where an `ELSE` would only point to the currently active state, omit the `ELSE` branch and leave only a plain `IF`.
+## State Transitions
+- **Never** use `rising_edge()` on input (data) signals to control state transitions.
+- To detect an edge, generate a single-cycle pulse signal and sample the level of that pulse.
+- When an `ELSE` branch points only to the active state, omit the `ELSE` branch and keep only the `IF` statement.
 
 ```vhdl
 -- RIGHT (No ELSE needed for synthesizable FSM)
@@ -425,7 +425,7 @@ END IF;
 ## FSM Optimizations and Hacks
 
 ### The "Default Assignment" Hack
-Instead of assigning outputs in every single `WHEN` branch, assign default values **once** at the very top of the process. This guarantees no latches are inferred and significantly simplifies state logic.
+Assign default values *once* at the top of the process rather than in every `WHEN` branch. This prevents latches and simplifies state logic.
 
 ```vhdl
 fsm_proc: PROCESS(clk_in)
@@ -468,7 +468,7 @@ ATTRIBUTE fsm_safe_state OF s_state : SIGNAL IS "default_state";
 ```
 
 ### Registered Look-Ahead Outputs
-To eliminate slow combinatorial output paths, calculate the **next** output based on the **next** state within the same clock cycle so that both State and Output update simultaneously at the clock edge.
+To eliminate slow combinatorial output paths, calculate the **next** output from the **next** state in the same cycle. Both state and output then update together at the clock edge.
 
 ```vhdl
 CASE s_current_state IS
@@ -502,7 +502,7 @@ WHEN 0 TO 5 =>
 In VHDL, sequential signal assignments take one clock cycle to take effect. Correct counter management prevents off-by-one errors.
 
 ### Exit Condition Look-Ahead
-Check against `TERMINAL_COUNT - 1` when using registered signals to prevent lingering in a state for an unintended extra cycle.
+Compare against `TERMINAL_COUNT - 1` when using registered signals to prevent lingering in a state for an unintended extra cycle.
 
 ```vhdl
 -- RIGHT: Stays for exactly 10 cycles
@@ -539,7 +539,226 @@ If updated increment values must be evaluated immediately within the exact same 
 Always declare range-bounded integers and include an explicit reset assignment in the `WHEN OTHERS` branch to prevent permanent deadlocks.
 
 ### Shared Counter Optimization
-Instantiate a single generic counter signal and reset it across state transitions to substantially decrease FPGA logic utilization (LUT count) when multiple states require counting sequences.
+Use a single generic counter signal across multiple states. Reset it across transitions to reduce FPGA logic utilization (LUT count).
+
+---
+
+# Subprograms: Functions & Procedures
+
+Subprograms (functions and procedures) modularize repetitive algorithms, compute elaboration parameters, and decompose complex process logic. Distinguishing between pure functions, impure functions, and procedures is vital for synthesizable and deterministic hardware design.
+
+## Architectural Scope & Subprogram Selection
+
+VHDL provides two distinct subprogram classes: **Functions** and **Procedures**. Choosing the correct subprogram and defining its scope properly ensures clean hierarchy, high performance, and synthesis predictability.
+
+| Characteristic | Function | Procedure |
+| :--- | :--- | :--- |
+| **Return Value** | Single value via `RETURN` | None (modifies `OUT` / `INOUT` parameters) |
+| **Parameter Modes** | `IN` only (default class `CONSTANT`) <br> *(VHDL-2008 adds `FILE`, `PROTECTED`)* | `IN`, `OUT`, `INOUT` (classes `CONSTANT`, `VARIABLE`, `SIGNAL`) |
+| **Invocation Context** | Within expressions, concurrent assignments, generic maps | As sequential statement in a process or concurrent procedure call |
+| **WAIT Statements** | **Strictly Forbidden** (illegal in functions) | **Simulation only** (forbidden in synthesizable RTL) |
+| **Synthesis Target** | Combinatorial netlist (LUTs/ALU) or elaboration constants | Combinatorial/sequential logic within host process |
+
+### Declarative Scope Placement
+
+Subprograms can be declared in three primary scopes:
+
+- **Package Body (`_pkg.vhd`)**: For globally reusable subprograms across entities and testbenches (e.g., CRC functions, `clog2`, bus conversion utilities). Declare the subprogram signature in the `PACKAGE`, and place its implementation in the `PACKAGE BODY`.
+- **Architecture Declarative Region**: For helper routines shared among multiple processes within a single module architecture, but not needed outside the entity.
+- **Process Declarative Region**: For local subprograms called exclusively by one specific process. This encapsulates process-specific temporary variables and logic, keeping the architecture namespace clean.
+
+## Pure Functions (`PURE FUNCTION`)
+
+Functions in VHDL are **pure** by default (the `PURE` keyword is optional). Pure functions adhere to strict mathematical functional purity:
+
+1. **Determinism**: For identical input arguments, a pure function **always** returns the exact same result.
+2. **No Side Effects**: A pure function cannot read or modify any signal, variable, or external state outside its formal parameter list.
+3. **Synthesis Friendly**: Synthesis tools can optimize pure functions aggressively (constant folding, dead-code elimination, and resource sharing).
+
+> **Note:** Custom functions and procedures **should** use `lowercase` names, while IEEE standard functions and datatypes **must** be in `ALL CAPS`.
+
+### Elaboration Width Calculation (`clog2`)
+
+A classic pure function calculates address bus widths from memory depth parameters at compile time:
+
+```vhdl
+FUNCTION clog2(depth : POSITIVE) RETURN NATURAL IS
+    VARIABLE v_temp  : POSITIVE := depth - 1;
+    VARIABLE v_width : NATURAL  := 0;
+BEGIN
+    WHILE v_temp > 0 LOOP
+        v_temp  := v_temp / 2;
+        v_width := v_width + 1;
+    END LOOP;
+    RETURN v_width;
+END FUNCTION clog2;
+```
+
+### Combinatorial Logic Generation
+
+Pure functions can also generate synthesizable combinatorial logic networks, such as a parameterized bit-reversal:
+
+```vhdl
+FUNCTION reverse_bits(vec : STD_LOGIC_VECTOR) RETURN STD_LOGIC_VECTOR IS
+    VARIABLE v_res : STD_LOGIC_VECTOR(vec'RANGE);
+BEGIN
+    FOR i IN vec'LOW TO vec'HIGH LOOP
+        v_res(vec'HIGH - (i - vec'LOW)) := vec(i);
+    END LOOP;
+    RETURN v_res;
+END FUNCTION reverse_bits;
+```
+
+## Impure Functions (`IMPURE FUNCTION`)
+
+An `IMPURE FUNCTION` is explicitly declared with the `IMPURE` keyword. Unlike pure functions, impure functions:
+
+- Can read or modify signals, shared variables, or files outside their parameter list.
+- Can return different values on successive calls even when invoked with identical arguments.
+
+> **Synthesis Note:** **Impure functions must NEVER be used for runtime synthesizable datapath logic.** Reading external signals inside an impure function hides sensitivity dependencies. This causes delta-cycle race conditions and simulation-synthesis mismatches.
+
+### Synthesizable Use Case: ROM Pre-loading via File I/O (`TEXTIO`)
+
+The primary synthesizable use of an `IMPURE FUNCTION` is compile-time elaboration. Use it to initialize FPGA block RAMs or ROMs from an external data file:
+
+```vhdl
+USE STD.TEXTIO.ALL;
+
+-- Architecture Declarative Region
+TYPE t_rom_array IS ARRAY (0 TO c_rom_depth - 1) OF STD_LOGIC_VECTOR(g_data_width - 1 DOWNTO 0);
+
+IMPURE FUNCTION init_rom_from_file(file_name : STRING) RETURN t_rom_array IS
+    FILE rom_file   : TEXT OPEN READ_MODE IS file_name;
+    VARIABLE v_line : LINE;
+    VARIABLE v_data : STD_LOGIC_VECTOR(g_data_width - 1 DOWNTO 0);
+    VARIABLE v_rom  : t_rom_array := (OTHERS => (OTHERS => '0'));
+BEGIN
+    FOR i IN 0 TO c_rom_depth - 1 LOOP
+        IF NOT ENDFILE(rom_file) THEN
+            READLINE(rom_file, v_line);
+            HREAD(v_line, v_data); -- VHDL-2008 / standard hex read
+            v_rom(i) := v_data;
+        END IF;
+    END LOOP;
+    RETURN v_rom;
+END FUNCTION init_rom_from_file;
+
+-- Initialized ROM constant (inferred as Block RAM/ROM during synthesis)
+CONSTANT c_rom_data : t_rom_array := init_rom_from_file("boot_code.hex");
+```
+
+### Testbench Use Case: Random Generators & Monitors
+
+In testbenches, impure functions are commonly used for:
+- Pseudorandom number generators that update an internal or shared seed variable.
+- Accessing simulation time (`NOW`) or sampling global simulation flags without passing them through parameter lists.
+
+## Procedures (`PROCEDURE`)
+
+Procedures execute sequential statements, can return multiple results through `OUT` or `INOUT` parameters, and can directly drive signals.
+
+### Parameter Modes & Classes
+
+Procedure parameters support three modes:
+- `IN`: Read-only. The default parameter class is `CONSTANT`.
+- `OUT`: Write-only. The default parameter class is `VARIABLE`.
+- `INOUT`: Read and write. The default parameter class is `VARIABLE`.
+
+Procedure parameters can also explicitly declare the `SIGNAL` class:
+
+```vhdl
+PROCEDURE pulse_strobe(
+    SIGNAL strobe_out : OUT STD_LOGIC
+);
+```
+
+### Synthesizable RTL Procedure Rules
+
+When using procedures in synthesizable RTL designs, follow these mandatory rules:
+
+1. **No `WAIT` Statements**: Procedures synthesized into hardware **must not** contain `WAIT` statements. All operations must complete in zero simulation time within the host process.
+2. **Latch Prevention**: If a procedure assigns output variables or signals conditionally, ensure all possible execution paths assign a value, or initialize defaults prior to invocation.
+3. **Single Driver Rule**: When passing signals as `OUT` or `INOUT` to a procedure, ensure only one active process drives that signal.
+
+### The `SIGNAL` vs `VARIABLE` Parameter Trap
+
+A critical semantic difference exists between passing a `VARIABLE` and a `SIGNAL` to a procedure:
+
+- **Variable parameter (`VARIABLE`)**: Assigned using `:=`. The variable updates **immediately** within the procedure.
+- **Signal parameter (`SIGNAL`)**: Assigned using `<=`. The assignment schedules an event that takes effect **only at the next delta cycle or clock edge**.
+
+```vhdl
+-- Factoring out repetitive synchronous handshake logic in an FSM
+PROCEDURE send_packet(
+    SIGNAL tx_data_out  : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+    SIGNAL tx_valid_out : OUT STD_LOGIC;
+    CONSTANT c_payload  : IN  STD_LOGIC_VECTOR(31 DOWNTO 0)
+) IS
+BEGIN
+    tx_data_out  <= c_payload;
+    tx_valid_out <= '1';
+END PROCEDURE send_packet;
+```
+
+## Array Parameter Handling & Index Normalization
+
+A pervasive bug in VHDL subprograms is assuming the index range or direction of unconstrained array parameters.
+
+### The Index Range Trap
+
+When passing an array slice like `s_data(15 DOWNTO 8)` or an ascending array `s_bus(0 TO 7)` to a subprogram declared with `(vec : STD_LOGIC_VECTOR)`:
+- The parameter **inherits the exact index range and direction** of the actual signal passed to it.
+- If the function body attempts to access `vec(0)` or `vec(7)`, a runtime index failure occurs because valid indices for `s_data(15 DOWNTO 8)` are `15 DOWNTO 8`.
+
+### The Normalization Solution (`ALIAS`)
+
+To write reliable, reusable subprograms that accept any vector range or direction:
+
+1. Declare unconstrained vector parameters (`STD_LOGIC_VECTOR` or `UNSIGNED`).
+2. Normalize the index range inside the subprogram using an `ALIAS`:
+
+```vhdl
+FUNCTION count_ones(vec : STD_LOGIC_VECTOR) RETURN NATURAL IS
+    -- Normalize index to (vec'LENGTH - 1 DOWNTO 0) regardless of caller range
+    ALIAS a_vec      : STD_LOGIC_VECTOR(vec'LENGTH - 1 DOWNTO 0) IS vec;
+    VARIABLE v_count : NATURAL := 0;
+BEGIN
+    FOR i IN a_vec'LOW TO a_vec'HIGH LOOP
+        IF a_vec(i) = '1' THEN
+            v_count := v_count + 1;
+        END IF;
+    END LOOP;
+    RETURN v_count;
+END FUNCTION count_ones;
+```
+
+> **Tip:** Normalizing array parameters with `ALIAS a_vec : ... (vec'LENGTH - 1 DOWNTO 0)` guarantees immunity against ascending (`TO`) vs descending (`DOWNTO`) index discrepancies and non-zero slice offsets.
+
+### Subprogram Overloading
+
+VHDL permits subprogram overloading, where multiple functions or procedures share the same name with different parameter signatures (types or counts) or return types:
+
+```vhdl
+-- Overloaded to accept both STD_LOGIC_VECTOR and UNSIGNED
+FUNCTION to_gray(val : STD_LOGIC_VECTOR) RETURN STD_LOGIC_VECTOR;
+FUNCTION to_gray(val : UNSIGNED) RETURN UNSIGNED;
+```
+
+Overloading should be used judiciously—principally for type conversions and widening arithmetic operations—to avoid ambiguity in expressions.
+
+## Subprograms Quick Reference & Rules
+
+| Rule | Severity | Description |
+| :--- | :--- | :--- |
+| **Pure by Default** | Must | All runtime datapath and math functions **must** be pure. |
+| **Impure for ROM Init** | Permitted | Use `IMPURE FUNCTION` with `TEXTIO` for compile-time ROM pre-loading. |
+| **No Impure Datapath** | Must | Never use impure functions in runtime synthesizable datapath logic. |
+| **No WAIT in RTL** | Must | Procedures for synthesis **must not** contain `WAIT` statements. |
+| **Normalize Arrays** | Should | Use `ALIAS` or `'RANGE` / `'LENGTH` to prevent index range mismatches. |
+| **Subprogram Overloading** | Permitted | Permitted for polymorphic types. Keep signatures unambiguous. |
+| **Lowercase Naming** | Should | Custom subprogram names should be `lowercase` (e.g., `clog2`, `count_ones`). |
+| **Latch Prevention** | Must | Procedures assigning combinatorial outputs must assign values in all branches. |
 
 ---
 
@@ -703,8 +922,8 @@ Synthesis attributes provide compiler directives to guide physical hardware mapp
 
 #### The I/O Timing Savior: `IOB`
 
-- **What it does**: Forces an input or output flip-flop into dedicated ILOGIC/OLOGIC storage elements located directly inside the physical device pad ring (I/O block), rather than in general FPGA logic slices (fabric).
-- **Why it matters**: High-speed external interfaces (such as ADCs, DACs, SPI flashes, and Gigabit Ethernet PHYs) require strict, deterministic setup ($t_{su}$), hold ($t_h$), and clock-to-output ($t_{co}$) times. If interface registers are placed in the FPGA fabric, place-and-route (P&R) variations will change routing delays on every compile, randomly breaking timing closure. Setting `IOB = "TRUE"` packs the flip-flop directly into the pin buffer, eliminating internal interconnect delay and guaranteeing absolute deterministic interface timing across builds.
+- **What it does**: Packs interface flip-flops into dedicated ILOGIC/OLOGIC storage elements in the physical I/O ring, rather than general FPGA fabric slices.
+- **Why it matters**: High-speed external interfaces (ADCs, DACs, SPI flash, Ethernet PHYs) require strict setup ($t_{su}$), hold ($t_h$), and clock-to-output ($t_{co}$) times. Fabric routing adds variable delays that break timing across builds. Setting `IOB = "TRUE"` packs the register into the pin buffer. This eliminates interconnect delay and ensures deterministic timing.
 
 **Example:**
 
@@ -749,7 +968,7 @@ END ARCHITECTURE rtl;
 
 | Keyword | Delay Type | Description |
 | :--- | :--- | :--- |
-| `TRANSPORT` | Transport | Models ideal wire delay; all signal pulses pass through regardless of width. |
+| `TRANSPORT` | Transport | Models ideal wire delay. All signal pulses pass through regardless of width. |
 | `REJECT` | Inertial | Specifies pulse rejection width threshold for inertial delay. |
 
 ### Simulation Hacks & Testbenching
@@ -784,7 +1003,7 @@ FINISH;
 ```
 
 ### Transaction Tracking (`'TRANSACTION`)
-A `BIT` signal attribute that toggles whenever a signal assignment is performed, even if the value itself does not change.
+A `BIT` signal attribute that toggles on every signal transaction, even when the driven value remains identical.
 
 ---
 

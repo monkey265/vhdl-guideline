@@ -52,3 +52,4 @@ cp -r .claude/skills/vhdl-guideline ~/.claude/skills/
 5. **Latch Prevention**: All signals assigned in all branches (`IF/ELSE`, `CASE/WHEN OTHERS`).
 6. **FSMs**: 1-process FSM preferred on FPGA; default assignments before `CASE`; look-ahead output registers.
 7. **Arithmetic**: Strict `ieee.numeric_std` + `UNSIGNED`/`SIGNED` casting.
+8. **Subprograms**: Pure functions for synthesizable datapath; impure functions reserved for ROM init via `TEXTIO` or testbenches; no `WAIT` in synthesizable procedures; normalize array parameters with `ALIAS`.

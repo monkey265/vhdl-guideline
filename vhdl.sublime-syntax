@@ -30,11 +30,11 @@ contexts:
       scope: constant.numeric.vhdl
 
     # Standard types
-    - match: '(?i)\b(STD_LOGIC|STD_LOGIC_VECTOR|STD_ULOGIC|STD_ULOGIC_VECTOR|BOOLEAN|BIT|BIT_VECTOR|CHARACTER|STRING|INTEGER|NATURAL|POSITIVE|REAL|TIME|SIGNED|UNSIGNED)\b'
+    - match: '(?i)\b(STD_LOGIC|STD_LOGIC_VECTOR|STD_ULOGIC|STD_ULOGIC_VECTOR|BOOLEAN|BIT|BIT_VECTOR|CHARACTER|STRING|INTEGER|NATURAL|POSITIVE|REAL|TIME|SIGNED|UNSIGNED|LINE|TEXT)\b'
       scope: storage.type.vhdl
 
     # Common standard functions & procedures
-    - match: '(?i)\b(rising_edge|falling_edge|to_integer|to_unsigned|to_signed|resize|to_bit|to_stdlogic|finish|stop)\b'
+    - match: '(?i)\b(rising_edge|falling_edge|to_integer|to_unsigned|to_signed|resize|to_bit|to_stdlogic|finish|stop|readline|read|hread|write|writeline|endfile)\b'
       scope: entity.name.function.vhdl
 
     # Keywords & Control Flow

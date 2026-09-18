@@ -21,5 +21,10 @@ When generating, editing, or reviewing VHDL code in this project, adhere strictl
   - Avoid `rising_edge()` on data inputs.
   - Look-ahead exit conditions (`s_count = g_LIMIT - 1`).
   - Strict `ieee.numeric_std` usage (no `std_logic_unsigned`).
+- **Subprograms (Functions & Procedures)**:
+  - Pure functions (`PURE FUNCTION`) for synthesizable datapath logic and compile-time constants.
+  - Impure functions (`IMPURE FUNCTION`) reserved for compile-time file I/O (ROM init via `TEXTIO`) or testbenches; never in runtime datapath.
+  - Procedures in synthesizable RTL must never contain `WAIT` statements.
+  - Normalize array arguments using `ALIAS` or array attributes (`'LENGTH`, `'RANGE`) to prevent index range/direction bugs.
 
 See `.claude/skills/vhdl-guideline/SKILL.md` for full reference and examples.

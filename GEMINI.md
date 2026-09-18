@@ -21,5 +21,10 @@ This project enforces strict synthesizable VHDL coding practices. When writing o
    - Never use `rising_edge()` on data inputs.
    - Use default assignments at the top of the process before `CASE` statements.
    - Use `numeric_std` and `UNSIGNED` for vector math. Never use `std_logic_unsigned`.
+7. **Subprograms (Functions & Procedures)**:
+   - Pure functions (`PURE FUNCTION`) for all synthesizable datapath and combinatorial logic.
+   - Impure functions (`IMPURE FUNCTION`) strictly reserved for compile-time elaboration (e.g. ROM initialization via `TEXTIO`) or testbenches; never in runtime datapath.
+   - Procedures for synthesis must never contain `WAIT` statements.
+   - Normalize array arguments using `ALIAS` or array attributes (`'LENGTH`, `'RANGE`) to avoid index range/direction mismatches.
 
 For complete reference and details, consult the skill at `.agents/skills/vhdl-guideline/SKILL.md` or [`vhdl_guideline.typ`](./vhdl_guideline.typ).
